@@ -18,3 +18,22 @@ logs/
 
 # Debug HTML
 debug.html
+
+__pycache__/
+*.pyc
+
+.pytest_cache/
+
+.pytest_tmp/
+
+.env
+
+logs/
+
+cache/
+
+output/
+
+src/debug.html
+
+.venv/
