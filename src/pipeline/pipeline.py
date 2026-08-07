@@ -1,5 +1,8 @@
 from models import Company
-import traceback
+from logger.logger import get_logger
+
+
+logger = get_logger(__name__)
 
 
 class CompanyPipeline:
@@ -38,8 +41,7 @@ class CompanyPipeline:
 
         try:
 
-            print("=" * 70)
-            print(f"Processing : {company.company_name}")
+            logger.info("Processing: %s", company.company_name)
 
             # -----------------------------------------
             # Step 1 : Clean company name
@@ -59,13 +61,13 @@ class CompanyPipeline:
 
                     company.status = "Website Not Found"
 
-                    print("Website not found.")
+                    logger.warning("Website not found: %s", company.company_name)
 
                     return company
 
                 company.website = search_result.official_website
 
-            print(f"Website : {company.website}")
+            logger.info("Website: %s", company.website)
 
             # -----------------------------------------
             # Step 3 : Crawl Website
@@ -73,28 +75,27 @@ class CompanyPipeline:
 
             pages = self.crawler.crawl(company.website)
 
-            print(f"Pages downloaded : {len(pages)}")
+            logger.info("Pages downloaded: %s", len(pages))
 
             # -----------------------------------------
             # Step 4 : Extract Directors
             # -----------------------------------------
-
-            print(type(self.extractor))
-            print(self.extractor.__class__.__module__)
-            print(dir(self.extractor))
-
-            directors = self.extractor.extract(pages)
-
-            # -----------------------------------------
-            # Step 5 : Verify (optional)
-            # -----------------------------------------
+            #
+            # The pages only get DOM-parsed and candidate-matched once here.
+            # Previously this called extractor.extract(pages) (which itself
+            # parses + finds candidates) and then, if a verifier was present,
+            # called extractor.extract_candidates(pages) again -- parsing
+            # every page a second time and throwing away the first result.
 
             if self.verifier is not None:
-
 
                 candidates = self.extractor.extract_candidates(pages)
 
                 directors = self.verifier.verify(candidates)
+
+            else:
+
+                directors = self.extractor.extract(pages)
 
             company.directors.extend(directors)
 
@@ -114,15 +115,9 @@ class CompanyPipeline:
 
         except Exception as e:
 
-            print("\n" + "=" * 80)
-            print("PIPELINE EXCEPTION")
-            print("=" * 80)
-
-            traceback.print_exc()
+            logger.exception("Pipeline exception for %s", company.company_name)
 
             company.status = "Failed"
             company.error = str(e)
-
-            print("\nError:", e)
 
             return company
