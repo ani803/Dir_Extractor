@@ -4,12 +4,19 @@ from .link_filter import LinkFilter
 from .link_scorer import LinkScorer
 from concurrent.futures import ThreadPoolExecutor
 from concurrent.futures import as_completed
+import os
+
+from config.config import Config
+from logger.logger import get_logger
+
+
+logger = get_logger(__name__)
 
 
 class Crawler:
 
-    MAX_PAGES = 10
-    MAX_WORKERS = 4
+    MAX_PAGES = Config.CRAWLER_MAX_PAGES
+    MAX_WORKERS = Config.CRAWLER_WORKERS or min(4, max(1, os.cpu_count() or 1))
 
     PRIORITY_KEYWORDS = {
         "board",
@@ -58,14 +65,47 @@ class Crawler:
         self.link_scorer = LinkScorer()
         self.fetcher_factory = fetcher_factory
         self.max_workers = max_workers or self.MAX_WORKERS
+        self._homepage_fetcher = None
+
+    def __enter__(self):
+
+        self._homepage_fetcher = self.fetcher_factory()
+        self._homepage_fetcher.__enter__()
+
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+
+        if self._homepage_fetcher is not None:
+            self._homepage_fetcher.__exit__(exc_type, exc_val, exc_tb)
+            self._homepage_fetcher = None
 
     def _select_links_to_fetch(self, links):
 
-        return [
-            link
-            for link in links[: self.MAX_PAGES]
-            if link.score > 0
-        ]
+        selected = []
+        cumulative_score = 0
+
+        for link in links:
+            if len(selected) >= self.MAX_PAGES:
+                break
+
+            if link.score < Config.CRAWLER_MIN_LINK_SCORE:
+                continue
+
+            selected.append(link)
+            cumulative_score += link.score
+
+            if cumulative_score >= Config.CRAWLER_TARGET_SCORE:
+                break
+
+        return selected
+
+    def _get_homepage_fetcher(self):
+
+        if self._homepage_fetcher is not None:
+            return self._homepage_fetcher
+
+        return self.fetcher_factory()
 
     def _chunk_links(self, links, chunk_count):
 
@@ -90,12 +130,11 @@ class Crawler:
 
                     pages.append(page)
 
-                    print(f"Downloaded : {page.title}")
+                    logger.info("Downloaded: %s", page.title)
 
                 except Exception as e:
 
-                    print(f"Failed : {link.url}")
-                    print(e)
+                    logger.warning("Failed: %s | %s", link.url, e)
 
         return pages
 
@@ -116,7 +155,7 @@ class Crawler:
 
         pages = []
 
-        print(f"Parallel fetch workers : {worker_count}")
+        logger.info("Parallel fetch workers: %s", worker_count)
 
         with ThreadPoolExecutor(max_workers=worker_count) as executor:
 
@@ -138,11 +177,15 @@ class Crawler:
 
         pages = []
 
-        with PageFetcher() as fetcher:
+        fetcher = self._get_homepage_fetcher()
+        owns_fetcher = self._homepage_fetcher is None
 
-            print("=" * 80)
-            print("CRAWLER")
-            print("=" * 80)
+        if owns_fetcher:
+            fetcher.__enter__()
+
+        try:
+
+            logger.info("Crawler started: %s", website)
 
             try:
 
@@ -150,11 +193,11 @@ class Crawler:
 
                 pages.append(homepage)
 
-                print(f"Homepage : {homepage.title}")
+                logger.info("Homepage: %s", homepage.title)
 
                 links = self.link_extractor.extract(homepage)
 
-                print(f"Raw Links : {len(links)}")
+                logger.info("Raw links: %s", len(links))
 
                 links = self.link_filter.filter(
                 homepage.url,
@@ -188,13 +231,13 @@ class Crawler:
                     reverse=True,
                 )
 
-                print(f"Useful Links : {len(filtered)}")
+                logger.info("Useful links: %s", len(filtered))
 
                 selected_links = self._select_links_to_fetch(filtered)
 
                 for link in selected_links:
 
-                    print(f"[{link.score:3}] {link.url}")
+                    logger.info("Selected link [%s]: %s", link.score, link.url)
 
                 pages.extend(
                     self._fetch_links_parallel(selected_links)
@@ -202,9 +245,13 @@ class Crawler:
 
             except Exception as e:
 
-                print("\nCrawler Failed")
-                print(e)
+                logger.exception("Crawler failed: %s", website)
 
-        print(f"\nPages downloaded : {len(pages)}")
+        finally:
+
+            if owns_fetcher:
+                fetcher.__exit__(None, None, None)
+
+        logger.info("Pages downloaded: %s", len(pages))
 
         return pages

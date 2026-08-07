@@ -3,6 +3,7 @@ from models import Director
 from .name_validator import NameValidator
 from .designation_validator import DesignationValidator
 from .confidence import ConfidenceScorer
+from .ai_verifier import AIAssistedVerifier
 
 
 class DirectorVerifier:
@@ -14,8 +15,13 @@ class DirectorVerifier:
         self.designation_validator = DesignationValidator()
 
         self.confidence = ConfidenceScorer()
+        self.ai_verifier = AIAssistedVerifier()
 
     def verify(self, candidates):
+
+        # Batch every candidate for this company through the AI verifier in
+        # one pass (chunked internally) instead of one call per candidate.
+        candidates = self.ai_verifier.verify(candidates)
 
         verified = []
 
@@ -54,7 +60,11 @@ class DirectorVerifier:
 
                     confidence=self.confidence.score(candidate),
 
-                    source=getattr(candidate, "source", "")
+                    source=getattr(candidate, "source", ""),
+
+                    ai_verified=getattr(candidate, "ai_verified", None),
+
+                    ai_reasoning=getattr(candidate, "ai_reasoning", ""),
 
                 )
 

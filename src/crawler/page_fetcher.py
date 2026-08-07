@@ -7,6 +7,11 @@ from playwright.sync_api import (
 )
 
 from models import Page
+from config.config import Config
+from logger.logger import get_logger
+
+
+logger = get_logger(__name__)
 
 
 class PageFetcher:
@@ -25,7 +30,7 @@ class PageFetcher:
 
     MAX_RETRIES = 3
 
-    TIMEOUT = 30000
+    TIMEOUT = Config.PAGE_TIMEOUT_MS
 
     def __init__(
         self,
@@ -40,6 +45,13 @@ class PageFetcher:
         self.debug_file = (
             debug_file
             or project_root / "src" / "debug.html"
+        )
+
+    def _timeout_for_attempt(self, attempt: int) -> int:
+
+        return min(
+            self.TIMEOUT,
+            Config.PAGE_INITIAL_TIMEOUT_MS * attempt,
         )
 
     def __enter__(self):
@@ -114,17 +126,25 @@ class PageFetcher:
 
                 self._configure_page(page)
 
-                print(f"[{attempt}/{self.MAX_RETRIES}] {url}")
+                timeout = self._timeout_for_attempt(attempt)
+
+                logger.info(
+                    "Fetching [%s/%s] %s timeout=%sms",
+                    attempt,
+                    self.MAX_RETRIES,
+                    url,
+                    timeout,
+                )
 
                 page.goto(
                     url,
                     wait_until="domcontentloaded",
-                    timeout=self.TIMEOUT,
+                    timeout=timeout,
                 )
 
                 page.wait_for_load_state(
                     "networkidle",
-                    timeout=self.TIMEOUT,
+                    timeout=timeout,
                 )
 
                 html = page.content()
@@ -146,7 +166,7 @@ class PageFetcher:
 
             except PlaywrightTimeoutError:
 
-                print(f"Timeout ({attempt})")
+                logger.warning("Timeout fetching %s on attempt %s", url, attempt)
 
                 if attempt == self.MAX_RETRIES:
                     raise
@@ -155,9 +175,7 @@ class PageFetcher:
 
             except Exception as e:
 
-                print(f"Fetch Error ({attempt})")
-
-                print(e)
+                logger.warning("Fetch error for %s on attempt %s: %s", url, attempt, e)
 
                 if attempt == self.MAX_RETRIES:
                     raise

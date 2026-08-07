@@ -3,6 +3,10 @@ from ddgs import DDGS
 from models import Company
 from search.search_result import SearchResult
 from .base_provider import BaseProvider
+from logger.logger import get_logger
+
+
+logger = get_logger(__name__)
 
 
 class DuckDuckGoProvider(BaseProvider):
@@ -11,10 +15,7 @@ class DuckDuckGoProvider(BaseProvider):
 
         query = f"{company.search_name} official website"
 
-        print("=" * 80)
-        print("DuckDuckGo Search")
-        print("=" * 80)
-        print("Query:", query)
+        logger.info("DuckDuckGo query: %s", query)
 
         try:
             results = list(DDGS().text(query, max_results=5))
@@ -26,7 +27,7 @@ class DuckDuckGoProvider(BaseProvider):
                     error="No DuckDuckGo results.",
                 )
 
-            print("Results Found:", len(results))
+            logger.info("DuckDuckGo results found: %s", len(results))
 
             # Websites that are usually NOT the company's official website
             BLACKLIST = [
@@ -54,13 +55,13 @@ class DuckDuckGoProvider(BaseProvider):
                 if not url:
                     continue
 
-                print("Candidate:", url)
+                logger.debug("DuckDuckGo candidate: %s", url)
 
                 url_lower = url.lower()
 
                 # Skip non-official websites
                 if any(site in url_lower for site in BLACKLIST):
-                    print("Skipped")
+                    logger.debug("Skipped blacklisted URL: %s", url)
                     continue
 
                 best_url = url
@@ -83,7 +84,7 @@ class DuckDuckGoProvider(BaseProvider):
 
         except Exception as e:
 
-            print("DuckDuckGo Error:", e)
+            logger.warning("DuckDuckGo error: %s", e)
 
             return SearchResult(
                 company_name=company.company_name,
