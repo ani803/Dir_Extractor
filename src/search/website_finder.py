@@ -1,6 +1,7 @@
 from models import Company
+from concurrent.futures import FIRST_COMPLETED
 from concurrent.futures import ThreadPoolExecutor
-from concurrent.futures import as_completed
+from concurrent.futures import wait
 import os
 
 from search.cache_manager import CacheManager
@@ -63,49 +64,80 @@ class WebsiteFinder:
 
         with ThreadPoolExecutor(max_workers=self.max_workers) as executor:
 
-            futures = [
-                executor.submit(
-                    self._search_provider,
-                    provider,
-                    company,
+            providers = iter(self.providers)
+            pending = set()
+
+            def submit_next():
+
+                try:
+                    provider = next(providers)
+                except StopIteration:
+                    return
+
+                pending.add(
+                    executor.submit(
+                        self._search_provider,
+                        provider,
+                        company,
+                    )
                 )
-                for provider in self.providers
-            ]
 
-            for future in as_completed(futures):
+            for _ in range(min(self.max_workers, len(self.providers))):
+                submit_next()
 
-                provider, result = future.result()
+            while pending:
 
-                if not result.success:
-                    logger.debug(
-                        "%s did not return a website: %s",
-                        provider.__class__.__name__,
-                        result.error,
-                    )
-                    continue
+                done, pending = wait(
+                    pending,
+                    return_when=FIRST_COMPLETED,
+                )
 
-                if not self.validator.validate(result.official_website):
-                    logger.debug(
-                        "%s returned invalid website: %s",
-                        provider.__class__.__name__,
-                        result.official_website,
-                    )
-                    continue
+                should_stop = False
 
-                if (
-                    best_result is None
-                    or result.confidence > best_result.confidence
-                ):
-                    best_result = result
+                for future in done:
 
-                if result.confidence >= Config.SEARCH_HIGH_CONFIDENCE:
-                    logger.info(
-                        "Selected %s from %s with confidence %.2f",
-                        result.official_website,
-                        result.source,
-                        result.confidence,
-                    )
+                    provider, result = future.result()
+
+                    if not result.success:
+                        logger.debug(
+                            "%s did not return a website: %s",
+                            provider.__class__.__name__,
+                            result.error,
+                        )
+                        continue
+
+                    if not self.validator.validate(result.official_website):
+                        logger.debug(
+                            "%s returned invalid website: %s",
+                            provider.__class__.__name__,
+                            result.official_website,
+                        )
+                        continue
+
+                    if (
+                        best_result is None
+                        or result.confidence > best_result.confidence
+                    ):
+                        best_result = result
+
+                    if result.confidence >= Config.SEARCH_HIGH_CONFIDENCE:
+                        logger.info(
+                            "Selected %s from %s with confidence %.2f",
+                            result.official_website,
+                            result.source,
+                            result.confidence,
+                        )
+                        should_stop = True
+                        break
+
+                if should_stop:
+                    for future in pending:
+                        future.cancel()
+                    executor.shutdown(wait=False, cancel_futures=True)
                     break
+
+                for _ in range(len(done)):
+                    submit_next()
 
         if best_result is not None:
 

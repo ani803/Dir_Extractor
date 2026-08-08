@@ -92,6 +92,7 @@ def main():
     metrics = RuntimeMetrics()
     metrics.start(len(companies))
     resume_state = ResumeState(args.state_file) if args.resume else None
+    writer = ExcelWriter(args.output)
 
     processed = []
 
@@ -131,12 +132,15 @@ def main():
             processed.append(company)
             metrics.record_company(company)
 
+            if resume_state:
+                writer.save(processed)
+
             if resume_state and company.status != "Failed":
                 resume_state.mark_completed(company)
 
             logger.info("Status: %s | %s", company.status, metrics.progress_text())
 
-    ExcelWriter(args.output).save(processed)
+    writer.save(processed)
 
     logger.info("Pipeline finished. Results saved to: %s", args.output)
     logger.info("Final metrics: %s", metrics.progress_text())

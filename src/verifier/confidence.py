@@ -1,3 +1,6 @@
+from config.config import Config
+
+
 class ConfidenceScorer:
 
     STRONG_TITLES = {
@@ -22,6 +25,11 @@ class ConfidenceScorer:
         "team",
     }
 
+    REJECT = "reject"
+    REVIEW = "review"
+    ACCEPT = "accept"
+    HIGH_CONFIDENCE = "high-confidence"
+
     def score(self, candidate):
 
         score = getattr(candidate, "confidence", 0) * 0.35
@@ -35,7 +43,7 @@ class ConfidenceScorer:
         if len(candidate.name.split()) >= 2:
             score += 10
 
-        designation = candidate.designation.lower()
+        designation = (candidate.designation or "").lower()
 
         if designation in self.STRONG_TITLES:
             score += 15
@@ -43,7 +51,7 @@ class ConfidenceScorer:
         elif "director" in designation:
             score += 15
 
-        context = candidate.context.lower()
+        context = (candidate.context or "").lower()
 
         if candidate.name.lower() in context:
             score += 5
@@ -57,3 +65,16 @@ class ConfidenceScorer:
             score += 10
 
         return min(score, 100)
+
+    def band(self, score: float) -> str:
+
+        if score < Config.DIRECTOR_REJECT_THRESHOLD:
+            return self.REJECT
+
+        if score < Config.DIRECTOR_ACCEPT_THRESHOLD:
+            return self.REVIEW
+
+        if score < Config.DIRECTOR_HIGH_CONFIDENCE_THRESHOLD:
+            return self.ACCEPT
+
+        return self.HIGH_CONFIDENCE

@@ -28,6 +28,17 @@ class Config:
 
     PAGE_TIMEOUT_MS = int(os.getenv("PAGE_TIMEOUT_MS", "30000"))
     PAGE_INITIAL_TIMEOUT_MS = int(os.getenv("PAGE_INITIAL_TIMEOUT_MS", "8000"))
+    DEBUG_HTML_ENABLED = (
+        os.getenv("DEBUG_HTML_ENABLED", "false").lower()
+        in {"1", "true", "yes", "on"}
+    )
+
+    DIRECTOR_REJECT_THRESHOLD = float(os.getenv("DIRECTOR_REJECT_THRESHOLD", "50"))
+    DIRECTOR_REVIEW_THRESHOLD = float(os.getenv("DIRECTOR_REVIEW_THRESHOLD", "70"))
+    DIRECTOR_ACCEPT_THRESHOLD = float(os.getenv("DIRECTOR_ACCEPT_THRESHOLD", "85"))
+    DIRECTOR_HIGH_CONFIDENCE_THRESHOLD = float(
+        os.getenv("DIRECTOR_HIGH_CONFIDENCE_THRESHOLD", "95")
+    )
 
     AI_VERIFICATION_ENABLED = (
         os.getenv("AI_VERIFICATION_ENABLED", "false").lower()

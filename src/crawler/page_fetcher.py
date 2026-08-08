@@ -1,5 +1,7 @@
 from pathlib import Path
+from threading import get_ident
 import time
+from uuid import uuid4
 
 from playwright.sync_api import (
     sync_playwright,
@@ -36,16 +38,32 @@ class PageFetcher:
         self,
         headless=True,
         debug_file=None,
+        debug_enabled=None,
+        debug_dir=None,
+        browser_pool=None,
+        context=None,
     ):
 
         project_root = Path(__file__).resolve().parents[2]
 
         self.headless = headless
 
-        self.debug_file = (
-            debug_file
-            or project_root / "src" / "debug.html"
+        self.debug_enabled = (
+            Config.DEBUG_HTML_ENABLED
+            if debug_enabled is None
+            else debug_enabled
         )
+        self.debug_dir = debug_dir or project_root / "debug"
+        self.debug_file = debug_file
+        if debug_file is not None:
+            self.debug_enabled = True
+
+        self.browser_pool = browser_pool
+        self.context = context
+        self.playwright = None
+        self.browser = None
+        self._owns_browser = False
+        self._borrowed_context = False
 
     def _timeout_for_attempt(self, attempt: int) -> int:
 
@@ -56,11 +74,20 @@ class PageFetcher:
 
     def __enter__(self):
 
+        if self.context is not None:
+            return self
+
+        if self.browser_pool is not None:
+            self.context = self.browser_pool.acquire()
+            self._borrowed_context = True
+            return self
+
         self.playwright = sync_playwright().start()
 
         self.browser = self.playwright.chromium.launch(
             headless=self.headless,
         )
+        self._owns_browser = True
 
         self.context = self.browser.new_context(
 
@@ -153,10 +180,7 @@ class PageFetcher:
 
                 final_url = page.url
 
-                self.debug_file.write_text(
-                    html,
-                    encoding="utf-8",
-                )
+                self._write_debug_file(html)
 
                 return Page(
                     url=final_url,
@@ -186,10 +210,40 @@ class PageFetcher:
 
                 page.close()
 
+    def _write_debug_file(self, html: str):
+
+        if not self.debug_enabled:
+            return
+
+        if self.debug_file is not None:
+            debug_file = Path(self.debug_file)
+        else:
+            self.debug_dir.mkdir(parents=True, exist_ok=True)
+            debug_file = self.debug_dir / (
+                f"page-{get_ident()}-{int(time.time() * 1000)}-{uuid4().hex}.html"
+            )
+
+        debug_file.write_text(
+            html,
+            encoding="utf-8",
+        )
+
     def __exit__(self, exc_type, exc_val, exc_tb):
 
-        self.context.close()
+        if self._borrowed_context:
+            self.browser_pool.release(self.context)
+            self.context = None
+            self._borrowed_context = False
+            return
 
-        self.browser.close()
+        if self.context is not None and self._owns_browser:
+            self.context.close()
+            self.context = None
 
-        self.playwright.stop()
+        if self.browser is not None:
+            self.browser.close()
+            self.browser = None
+
+        if self.playwright is not None:
+            self.playwright.stop()
+            self.playwright = None

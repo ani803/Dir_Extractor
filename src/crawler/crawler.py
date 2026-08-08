@@ -1,4 +1,5 @@
 from .page_fetcher import PageFetcher
+from .browserpool import BrowserPool
 from .link_extractor import LinkExtractor
 from .link_filter import LinkFilter
 from .link_scorer import LinkScorer
@@ -58,18 +59,34 @@ class Crawler:
         "signup",
     }
 
-    def __init__(self, fetcher_factory=PageFetcher, max_workers=None):
+    def __init__(
+        self,
+        fetcher_factory=PageFetcher,
+        max_workers=None,
+        browser_pool_factory=BrowserPool,
+        browser_pool=None,
+    ):
 
         self.link_extractor = LinkExtractor()
         self.link_filter = LinkFilter()
         self.link_scorer = LinkScorer()
         self.fetcher_factory = fetcher_factory
         self.max_workers = max_workers or self.MAX_WORKERS
+        self.browser_pool_factory = browser_pool_factory
+        self.browser_pool = browser_pool
+        self._owns_browser_pool = False
         self._homepage_fetcher = None
 
     def __enter__(self):
 
-        self._homepage_fetcher = self.fetcher_factory()
+        if self.browser_pool is None and self.fetcher_factory is PageFetcher:
+            self.browser_pool = self.browser_pool_factory(
+                size=max(1, self.max_workers + 1),
+            )
+            self.browser_pool.__enter__()
+            self._owns_browser_pool = True
+
+        self._homepage_fetcher = self._make_fetcher()
         self._homepage_fetcher.__enter__()
 
         return self
@@ -79,6 +96,18 @@ class Crawler:
         if self._homepage_fetcher is not None:
             self._homepage_fetcher.__exit__(exc_type, exc_val, exc_tb)
             self._homepage_fetcher = None
+
+        if self._owns_browser_pool and self.browser_pool is not None:
+            self.browser_pool.__exit__(exc_type, exc_val, exc_tb)
+            self.browser_pool = None
+            self._owns_browser_pool = False
+
+    def _make_fetcher(self):
+
+        if self.browser_pool is not None and self.fetcher_factory is PageFetcher:
+            return self.fetcher_factory(browser_pool=self.browser_pool)
+
+        return self.fetcher_factory()
 
     def _select_links_to_fetch(self, links):
 
@@ -105,7 +134,7 @@ class Crawler:
         if self._homepage_fetcher is not None:
             return self._homepage_fetcher
 
-        return self.fetcher_factory()
+        return self._make_fetcher()
 
     def _chunk_links(self, links, chunk_count):
 
@@ -120,7 +149,7 @@ class Crawler:
 
         pages = []
 
-        with self.fetcher_factory() as fetcher:
+        with self._make_fetcher() as fetcher:
 
             for link in links:
 

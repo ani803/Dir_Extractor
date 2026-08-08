@@ -50,6 +50,11 @@ class DirectorVerifier:
 
             seen.add(key)
 
+            confidence = self.confidence.score(candidate)
+
+            if self.confidence.band(confidence) == self.confidence.REJECT:
+                continue
+
             verified.append(
 
                 Director(
@@ -58,7 +63,7 @@ class DirectorVerifier:
 
                     designation=candidate.designation,
 
-                    confidence=self.confidence.score(candidate),
+                    confidence=confidence,
 
                     source=getattr(candidate, "source", ""),
 

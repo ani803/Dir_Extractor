@@ -13,12 +13,14 @@ SYSTEM_PROMPT = (
     "You are verifying candidate director names that were scraped from company "
     "websites for regulatory/compliance research. For each candidate, decide "
     "whether the given context genuinely identifies them as a current director, "
-    "board member, or senior officer of the company -- not a footer link, an "
-    "unrelated employee, an auditor, a journalist quoted in a news snippet, or a "
-    "misparsed phrase. Use only the text you are given; never invent or assume "
-    "facts that are not in the context. Be conservative: if the context is "
-    "ambiguous or doesn't clearly support the claim, say so and lower the "
-    "confidence rather than guessing."
+    "board member, or board chair of the company. Do not count CEOs, CFOs, COOs, "
+    "company secretaries, founders, presidents, partners, advisors, auditors, or "
+    "other senior officers unless the same context explicitly says they are also "
+    "a director or board member. Also reject footer links, unrelated employees, "
+    "journalists quoted in news snippets, and misparsed phrases. Use only the "
+    "text you are given; never invent or assume facts that are not in the "
+    "context. Be conservative: if the context is ambiguous or doesn't clearly "
+    "support the claim, say so and lower the confidence rather than guessing."
 )
 
 VERIFY_TOOL = {
@@ -43,7 +45,7 @@ VERIFY_TOOL = {
                             "type": "boolean",
                             "description": (
                                 "True only if the context clearly supports this person being "
-                                "a current director/board member/senior officer of the company."
+                                "a current director, board member, or board chair of the company."
                             ),
                         },
                         "name": {
@@ -237,7 +239,12 @@ class AIAssistedVerifier:
 
     def _build_prompt(self, batch: list) -> str:
 
-        lines = ["Verify each of the following director candidates.\n"]
+        lines = [
+            "Verify each of the following director candidates. Return false for "
+            "CEO/CFO/COO/company secretary/founder/advisor/officer titles unless "
+            "the context explicitly also identifies the person as a director or "
+            "board member.\n"
+        ]
 
         for index, candidate in enumerate(batch):
             lines.append(
