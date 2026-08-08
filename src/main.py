@@ -16,13 +16,14 @@ from search.providers import (
     SerpApiProvider,
 )
 from writer import ExcelWriter
+from logger.logger import get_logger
+from metrics import RuntimeMetrics
+from resume import ResumeState
 
 from config.config import Config
 import config.config as config
 
-print("Config file:", config.__file__)
-print("Google:", Config.GOOGLE_API_KEY)
-print("CSE:", Config.GOOGLE_CSE_ID)
+logger = get_logger(__name__)
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
@@ -61,6 +62,19 @@ def build_parser():
         help="Skip candidate validation and confidence scoring.",
     )
 
+    parser.add_argument(
+        "--resume",
+        action="store_true",
+        help="Skip companies already marked completed in the resume state file.",
+    )
+
+    parser.add_argument(
+        "--state-file",
+        type=Path,
+        default=PROJECT_ROOT / "cache" / "resume_state.json",
+        help="Path to the resume state file.",
+    )
+
     return parser
 
 
@@ -75,36 +89,61 @@ def main():
     if args.limit is not None:
         companies = companies[:args.limit]
 
-    pipeline = CompanyPipeline(
-        cleaner=CompanyCleaner(),
-        website_finder=WebsiteFinder(
-            providers=[
-                DuckDuckGoProvider(),
-                BraveProvider(),
-                GoogleProvider(),
-                SerpApiProvider(),
-                BingProvider(),
-                ]
-            ),
-        crawler=Crawler(),
-        extractor=DirectorExtractor(),
-        verifier=None if args.no_verify else DirectorVerifier(),
-    )
+    metrics = RuntimeMetrics()
+    metrics.start(len(companies))
+    resume_state = ResumeState(args.state_file) if args.resume else None
+    writer = ExcelWriter(args.output)
 
     processed = []
 
-    for company in companies:
+    with Crawler() as crawler:
 
-        company = pipeline.process(company)
+        pipeline = CompanyPipeline(
+            cleaner=CompanyCleaner(),
+            website_finder=WebsiteFinder(
+                providers=[
+                    DuckDuckGoProvider(),
+                    BraveProvider(),
+                    GoogleProvider(),
+                    SerpApiProvider(),
+                    BingProvider(),
+                    ]
+                ),
+            crawler=crawler,
+            extractor=DirectorExtractor(),
+            verifier=None if args.no_verify else DirectorVerifier(),
+        )
 
-        processed.append(company)
+        for index, company in enumerate(companies, start=1):
 
-        print(company.status)
-        print("=" * 60)
+            logger.info("Progress: %s/%s", index, len(companies))
 
-    ExcelWriter(args.output).save(processed)
+            if resume_state and resume_state.should_skip(company):
+                metrics.record_skip()
+                logger.info(
+                    "Skipping completed row %s: %s",
+                    company.row_number,
+                    company.company_name,
+                )
+                continue
 
-    print(f"Pipeline Finished. Results saved to: {args.output}")
+            company = pipeline.process(company)
+
+            processed.append(company)
+            metrics.record_company(company)
+
+            if resume_state:
+                writer.save(processed)
+
+            if resume_state and company.status != "Failed":
+                resume_state.mark_completed(company)
+
+            logger.info("Status: %s | %s", company.status, metrics.progress_text())
+
+    writer.save(processed)
+
+    logger.info("Pipeline finished. Results saved to: %s", args.output)
+    logger.info("Final metrics: %s", metrics.progress_text())
 
 
 if __name__ == "__main__":

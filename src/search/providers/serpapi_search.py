@@ -10,6 +10,8 @@ class SerpApiProvider(BaseProvider):
 
     SEARCH_URL = "https://serpapi.com/search.json"
 
+    BASE_TRUST = 0.90
+
     def search(self, company: Company) -> SearchResult:
 
         if not Config.SERPAPI_KEY:
@@ -37,25 +39,18 @@ class SerpApiProvider(BaseProvider):
 
             data = response.json()
 
-            for result in data.get("organic_results", []):
+            organic_results = data.get("organic_results", [])
 
-                url = result.get("link")
+            if not organic_results:
+                return SearchResult(
+                    company_name=company.company_name,
+                    success=False,
+                    error="No SerpAPI results",
+                )
 
-                if url:
+            urls = [result.get("link") for result in organic_results]
 
-                    return SearchResult(
-                        company_name=company.company_name,
-                        official_website=url,
-                        source="SerpAPI",
-                        confidence=0.88,
-                        success=True,
-                    )
-
-            return SearchResult(
-                company_name=company.company_name,
-                success=False,
-                error="No SerpAPI results",
-            )
+            return self._best_match(company, urls, source="SerpAPI")
 
         except Exception as e:
 

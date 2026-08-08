@@ -34,6 +34,8 @@ class ExcelWriter:
                             "Designation": director.designation,
                             "Source": director.source,
                             "Confidence": director.confidence,
+                            "AI Verified": self._verified_label(director.ai_verified),
+                            "AI Reasoning": director.ai_reasoning,
                             "Status": company.status,
                             "Error": company.error,
                         }
@@ -51,9 +53,19 @@ class ExcelWriter:
                         "Designation": "",
                         "Source": "",
                         "Confidence": "",
+                        "AI Verified": "",
+                        "AI Reasoning": "",
                         "Status": company.status,
                         "Error": company.error,
                     }
                 )
 
         pd.DataFrame(rows).to_excel(self.file_path, index=False)
+
+    @staticmethod
+    def _verified_label(ai_verified) -> str:
+
+        if ai_verified is None:
+            return "Not checked"
+
+        return "Yes" if ai_verified else "No"
