@@ -56,3 +56,25 @@ def test_candidate_finder_ignores_unrelated_capitalized_details():
     candidates = CandidateFinder().find([card])
 
     assert [candidate.name for candidate in candidates] == ["Jane Sharma"]
+
+
+def test_candidate_finder_attaches_only_one_name_per_title_occurrence():
+    """
+    A single title match's +/-120 char window can contain more than one
+    capitalized phrase that superficially "relates" to it (e.g. two names
+    sitting close together in flattened table text). Only the single
+    best-ranked name should become a candidate for that title -- not every
+    name in the window -- or the same title gets attached to several
+    different (mostly wrong) people.
+    """
+
+    card = PersonCard(
+        text="Rakesh Kumar Sunita Rao is the Director of the company.",
+        html="",
+        source_url="https://example.com/board",
+    )
+
+    candidates = CandidateFinder().find([card])
+
+    assert len(candidates) == 1
+    assert candidates[0].designation == "Director"

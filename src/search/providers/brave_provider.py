@@ -10,6 +10,8 @@ class BraveProvider(BaseProvider):
 
     SEARCH_URL = "https://api.search.brave.com/res/v1/web/search"
 
+    BASE_TRUST = 0.90
+
     def search(self, company: Company) -> SearchResult:
 
         if not Config.BRAVE_API_KEY:
@@ -56,25 +58,9 @@ class BraveProvider(BaseProvider):
                     error="No Brave results.",
                 )
 
-            for result in results:
+            urls = [result.get("url") for result in results]
 
-                url = result.get("url")
-
-                if url:
-
-                    return SearchResult(
-                        company_name=company.company_name,
-                        official_website=url,
-                        source="Brave",
-                        confidence=0.93,
-                        success=True,
-                    )
-
-            return SearchResult(
-                company_name=company.company_name,
-                success=False,
-                error="No valid Brave URLs.",
-            )
+            return self._best_match(company, urls, source="Brave")
 
         except Exception as e:
 

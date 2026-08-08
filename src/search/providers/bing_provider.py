@@ -10,6 +10,8 @@ class BingProvider(BaseProvider):
 
     SEARCH_URL = "https://api.bing.microsoft.com/v7.0/search"
 
+    BASE_TRUST = 0.88
+
     def search(self, company: Company) -> SearchResult:
 
         if not Config.BING_API_KEY:
@@ -43,25 +45,16 @@ class BingProvider(BaseProvider):
 
             pages = data.get("webPages", {}).get("value", [])
 
-            for page in pages:
+            if not pages:
+                return SearchResult(
+                    company_name=company.company_name,
+                    success=False,
+                    error="No Bing results",
+                )
 
-                url = page.get("url")
+            urls = [page.get("url") for page in pages]
 
-                if url:
-
-                    return SearchResult(
-                        company_name=company.company_name,
-                        official_website=url,
-                        source="Bing",
-                        confidence=0.90,
-                        success=True,
-                    )
-
-            return SearchResult(
-                company_name=company.company_name,
-                success=False,
-                error="No Bing results",
-            )
+            return self._best_match(company, urls, source="Bing")
 
         except Exception as e:
 

@@ -16,6 +16,10 @@ class Director:
 
     confidence: float = 0.0
 
+    ai_verified: Optional[bool] = None
+
+    ai_reasoning: str = ""
+
 
 @dataclass
 class SearchResult:
@@ -49,7 +53,11 @@ class Candidate:
     source: Optional[str] = None
 
     confidence: float = 0.0
-    
+
+    ai_verified: Optional[bool] = None
+
+    ai_reasoning: str = ""
+
 
 @dataclass
 class Page:

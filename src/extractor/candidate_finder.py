@@ -2,29 +2,11 @@ import re
 
 from models import Candidate
 from .ner_validator import NamedEntityValidator
+from .title_matcher import TitleMatcher
 from verifier.name_validator import NameValidator
 
 
 class CandidateFinder:
-
-    TITLES = [
-        "Whole Time Director",
-        "Whole-Time Director",
-        "Executive Director",
-        "Non Executive Director",
-        "Non-Executive Director",
-        "Managing Director",
-        "Independent Director",
-        "Additional Director",
-        "Nominee Director",
-        "Director",
-        "Chairman",
-        "Chairperson",
-        "Chief Executive Officer",
-        "CEO",
-        "Managing Partner",
-        "Board Member",
-    ]
 
     BLACKLIST = {
         "annual",
@@ -132,6 +114,7 @@ class CandidateFinder:
     def __init__(self):
         self.name_validator = NameValidator()
         self.ner_validator = NamedEntityValidator()
+        self.title_matcher = TitleMatcher()
 
     def _find_names(self, text: str) -> list[str]:
 
@@ -186,33 +169,11 @@ class CandidateFinder:
         return name
 
     def _is_part_of_longer_title(self, text: str, match, title: str) -> bool:
-
-        for longer_title in self.TITLES:
-
-            if len(longer_title) <= len(title):
-                continue
-
-            for longer_match in re.finditer(
-                self.TITLE_BOUNDARY_PATTERN.format(re.escape(longer_title)),
-                text,
-                re.IGNORECASE,
-            ):
-
-                if (
-                    longer_match.start() <= match.start()
-                    and match.end() <= longer_match.end()
-                ):
-                    return True
-
         return False
 
     def _title_matches(self, text: str, title: str):
 
-        return re.finditer(
-            self.TITLE_BOUNDARY_PATTERN.format(re.escape(title)),
-            text,
-            re.IGNORECASE,
-        )
+        return self.title_matcher.find(text)
 
     def _relation_score(self, name_match, title_match, text: str) -> int | None:
 
@@ -257,12 +218,12 @@ class CandidateFinder:
 
     def _find_related_names(self, text: str, title_match) -> list[str]:
 
-        start = max(0, title_match.start() - 120)
-        end = min(len(text), title_match.end() + 120)
+        start = max(0, title_match.start - 120)
+        end = min(len(text), title_match.end + 120)
         context = text[start:end]
         relative_title_match = re.search(
             self.TITLE_BOUNDARY_PATTERN.format(
-                re.escape(title_match.group(0))
+                re.escape(title_match.match_text)
             ),
             context,
             re.IGNORECASE,
@@ -333,18 +294,24 @@ class CandidateFinder:
 
             text = " ".join(card.text.split())
 
-            for title in self.TITLES:
+            for match in self.title_matcher.find(text):
 
-                # Find title position
-                for match in self._title_matches(text, title):
-
-                    if self._is_part_of_longer_title(text, match, title):
-                        continue
-
-                    start = max(0, match.start() - 120)
-                    end = min(len(text), match.end() + 120)
+                    start = max(0, match.start - 120)
+                    end = min(len(text), match.end + 120)
                     context = text[start:end]
                     names = self._find_related_names(text, match)
+
+                    # _find_related_names returns every capitalized phrase in
+                    # the window around this title, ranked by how closely it
+                    # relates to the title match -- not just the one name
+                    # that actually goes with it. The old code turned EVERY
+                    # one of them into a separate candidate for this same
+                    # title, so a title next to two or three unrelated names
+                    # (e.g. two board members' names sitting close together
+                    # in flattened table text) produced multiple false
+                    # "director" rows sharing one title. Only the single
+                    # best-ranked name that survives every check is kept per
+                    # title occurrence.
 
                     for name in names:
 
@@ -367,18 +334,23 @@ class CandidateFinder:
                         key = name.lower()
 
                         if key in seen:
-                            continue
+                            break
 
                         seen.add(key)
 
                         candidates.append(
                             Candidate(
                                 name=name,
-                                designation=title,
+                                designation=match.title,
                                 context=context,
                                 source=card.source_url,
-                                confidence=nlp_confidence,
+                                confidence=min(
+                                    100,
+                                    (nlp_confidence * 0.7) + (match.score * 0.3),
+                                ),
                             )
                         )
+
+                        break
 
         return candidates

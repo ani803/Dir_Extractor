@@ -3,18 +3,24 @@ from ddgs import DDGS
 from models import Company
 from search.search_result import SearchResult
 from .base_provider import BaseProvider
+from logger.logger import get_logger
+
+
+logger = get_logger(__name__)
 
 
 class DuckDuckGoProvider(BaseProvider):
+
+    # No API key required, so results are noisier than the paid providers --
+    # trusted less by default, with the domain-match score doing most of the
+    # work to pick the right result out of the top 5.
+    BASE_TRUST = 0.85
 
     def search(self, company: Company) -> SearchResult:
 
         query = f"{company.search_name} official website"
 
-        print("=" * 80)
-        print("DuckDuckGo Search")
-        print("=" * 80)
-        print("Query:", query)
+        logger.info("DuckDuckGo query: %s", query)
 
         try:
             results = list(DDGS().text(query, max_results=5))
@@ -26,64 +32,15 @@ class DuckDuckGoProvider(BaseProvider):
                     error="No DuckDuckGo results.",
                 )
 
-            print("Results Found:", len(results))
+            logger.info("DuckDuckGo results found: %s", len(results))
 
-            # Websites that are usually NOT the company's official website
-            BLACKLIST = [
-                "wikipedia.org",
-                "linkedin.com",
-                "facebook.com",
-                "instagram.com",
-                "x.com",
-                "twitter.com",
-                "youtube.com",
-                "crunchbase.com",
-                "bloomberg.com",
-                "moneycontrol.com",
-                "zaubacorp.com",
-                "tofler.in",
-                "indiamart.com",
-            ]
+            urls = [result.get("href") for result in results]
 
-            best_url = None
-
-            for result in results:
-
-                url = result.get("href")
-
-                if not url:
-                    continue
-
-                print("Candidate:", url)
-
-                url_lower = url.lower()
-
-                # Skip non-official websites
-                if any(site in url_lower for site in BLACKLIST):
-                    print("Skipped")
-                    continue
-
-                best_url = url
-                break
-
-            if best_url:
-                return SearchResult(
-                    company_name=company.company_name,
-                    official_website=best_url,
-                    source="DuckDuckGo",
-                    confidence=0.95,
-                    success=True,
-                )
-
-            return SearchResult(
-                company_name=company.company_name,
-                success=False,
-                error="No suitable official website found.",
-            )
+            return self._best_match(company, urls, source="DuckDuckGo")
 
         except Exception as e:
 
-            print("DuckDuckGo Error:", e)
+            logger.warning("DuckDuckGo error: %s", e)
 
             return SearchResult(
                 company_name=company.company_name,
