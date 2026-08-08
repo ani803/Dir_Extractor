@@ -18,18 +18,16 @@ class DesignationValidator:
 
         "non executive director",
 
+        "non-executive director",
+
         "nominee director",
 
         "additional director",
 
-        "ceo",
-
-        "chief executive officer",
-
         "board member"
     }
 
-    INVALID_TITLES = {
+    FUNCTIONAL_DIRECTOR_TITLES = {
 
         "sales director",
 
@@ -48,6 +46,33 @@ class DesignationValidator:
         "film director"
     }
 
+    OFFICER_ONLY_TITLES = {
+
+        "ceo",
+
+        "chief executive officer",
+
+        "cfo",
+
+        "chief financial officer",
+
+        "coo",
+
+        "chief operating officer",
+
+        "company secretary",
+
+        "secretary",
+
+        "founder",
+
+        "advisor",
+
+        "adviser",
+
+        "president",
+    }
+
     def is_valid(self, designation: str) -> bool:
 
         if not designation:
@@ -55,10 +80,22 @@ class DesignationValidator:
 
         designation = designation.lower().strip()
 
-        for title in self.INVALID_TITLES:
+        for title in self.FUNCTIONAL_DIRECTOR_TITLES:
 
             if title in designation:
                 return False
+
+        has_board_title = any(
+            title in designation
+            for title in self.VALID_TITLES
+        )
+
+        if not has_board_title:
+
+            for title in self.OFFICER_ONLY_TITLES:
+
+                if title in designation:
+                    return False
 
         for title in self.VALID_TITLES:
 

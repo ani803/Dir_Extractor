@@ -4,6 +4,10 @@ from config.config import Config
 from models import Company
 from search.search_result import SearchResult
 from .base_provider import BaseProvider
+from logger.logger import get_logger
+
+
+logger = get_logger(__name__)
 
 
 class GoogleProvider(BaseProvider):
@@ -33,12 +37,8 @@ class GoogleProvider(BaseProvider):
             "num": 5,
         }
 
-        print("\n" + "=" * 80)
-        print("Google Search")
-        print("=" * 80)
-        print("Query :", params["q"])
-        print("Key   :", Config.GOOGLE_API_KEY[:8] + "...")
-        print("CX    :", Config.GOOGLE_CSE_ID)
+        logger.info("Google query: %s", params["q"])
+        logger.debug("Google CSE ID: %s", Config.GOOGLE_CSE_ID)
 
         try:
             response = requests.get(
@@ -47,12 +47,11 @@ class GoogleProvider(BaseProvider):
                 timeout=20,
             )
 
-            print("\nHTTP Status:", response.status_code)
+            logger.debug("Google HTTP status: %s", response.status_code)
 
             data = response.json()
 
-            print("\nGoogle Response:")
-            print(data)
+            logger.debug("Google response: %s", data)
 
             response.raise_for_status()
 
@@ -77,7 +76,7 @@ class GoogleProvider(BaseProvider):
                 url = item.get("link")
 
                 if url:
-                    print("\nSelected URL:", url)
+                    logger.info("Google selected URL: %s", url)
 
                     return SearchResult(
                         company_name=company.company_name,
@@ -95,7 +94,7 @@ class GoogleProvider(BaseProvider):
 
         except requests.exceptions.RequestException as e:
 
-            print("\nRequest Exception:", e)
+            logger.warning("Google request exception: %s", e)
 
             return SearchResult(
                 company_name=company.company_name,
@@ -105,7 +104,7 @@ class GoogleProvider(BaseProvider):
 
         except Exception as e:
 
-            print("\nUnexpected Exception:", e)
+            logger.warning("Google unexpected exception: %s", e)
 
             return SearchResult(
                 company_name=company.company_name,

@@ -22,6 +22,31 @@ SERPAPI_KEY=...
 
 If the input workbook already has a website column, the app can use it without search API keys.
 
+### Optional: AI-assisted verification
+
+Low-confidence director candidates (regex/NLP score below `AI_VERIFICATION_THRESHOLD`)
+can be double-checked by Claude before they're written to the output. Candidates
+for one company are batched into a single request each (`AI_VERIFICATION_BATCH_SIZE`,
+default 20), and every verified candidate is cached to `cache/ai_verifications.json`
+so repeat/`--resume` runs never re-verify the same candidate twice.
+
+```text
+ANTHROPIC_API_KEY=sk-ant-...
+AI_VERIFICATION_ENABLED=true
+AI_VERIFICATION_MODEL=claude-sonnet-5
+AI_VERIFICATION_THRESHOLD=75
+AI_VERIFICATION_BATCH_SIZE=20
+AI_VERIFICATION_MAX_RETRIES=3
+AI_VERIFICATION_TIMEOUT=30
+```
+
+If the key or the `anthropic` package is missing, or a request keeps failing
+after retries, the pipeline logs a warning and falls back to the heuristic
+confidence scores -- it never crashes a run over this. The output workbook
+gets two extra columns, `AI Verified` (Yes/No/Not checked) and `AI Reasoning`
+(the one-line justification the model gave), so every verified row is
+auditable.
+
 ## Run
 
 ```powershell

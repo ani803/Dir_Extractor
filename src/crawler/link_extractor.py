@@ -3,6 +3,10 @@ from urllib.parse import urljoin, urlparse, urlunparse
 
 from models import Link
 from models import Page
+from logger.logger import get_logger
+
+
+logger = get_logger(__name__)
 
 
 class LinkExtractor:
@@ -77,6 +81,6 @@ class LinkExtractor:
                 )
             )
 
-        print(f"Extracted {len(links)} unique links")
+        logger.info("Extracted %s unique links", len(links))
 
         return links

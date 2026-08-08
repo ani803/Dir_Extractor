@@ -4,6 +4,10 @@ from models import Director
 
 from .dom_parser import DOMParser
 from .candidate_finder import CandidateFinder
+from logger.logger import get_logger
+
+
+logger = get_logger(__name__)
 
 
 
@@ -47,23 +51,34 @@ class DirectorExtractor:
 
     def extract(self, pages: list[Page]) -> list[Director]:
 
-        print("\n" + "=" * 80)
-        print("DIRECTOR EXTRACTION")
-        print("=" * 80)
+        logger.info("Director extraction started")
+
+        candidates = self.extract_candidates(pages)
+
+        logger.info("Candidates found: %s", len(candidates))
+
+        return self.build_directors(candidates)
+
+    def build_directors(self, candidates: list) -> list[Director]:
+        """
+        Dedupe a list of already-found candidates into final Director
+        objects. Kept separate from extract_candidates()/extract() so the
+        pipeline can DOM-parse pages exactly once, then choose either this
+        (no verifier) or the AI verifier's own dedupe path -- instead of
+        re-parsing the same pages twice.
+        """
 
         directors = []
         seen_names = set()
 
-        candidates = self.extract_candidates(pages)
-
-        print(f"Candidates Found: {len(candidates)}")
-
         for candidate in candidates:
 
-            print("----------------------------------------")
-            print("Name:", candidate.name)
-            print("Designation:", candidate.designation)
-            print("Source:", candidate.source)
+            logger.debug(
+                "Candidate: %s | %s | %s",
+                candidate.name,
+                candidate.designation,
+                candidate.source,
+            )
 
             key = candidate.name.lower()
 
@@ -77,10 +92,10 @@ class DirectorExtractor:
                     name=candidate.name,
                     designation=candidate.designation,
                     source=candidate.source,
-                    confidence=85.0,
+                    confidence=candidate.confidence or 85.0,
                 )
             )
 
-        print(f"\nDirectors Extracted: {len(directors)}")
+        logger.info("Directors extracted: %s", len(directors))
 
         return directors
